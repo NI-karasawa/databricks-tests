@@ -1,0 +1,50 @@
+name: Databricks Pytest Integration test.
+
+on: [pull_request]
+
+env:
+  DATABRICKS_HOST: https://adb-8980866257250449.9.azuredatabricks.net/browse/folders/213299857572161?o=8980866257250449  #(対象となるWorkspace URLを入力） 
+  DATABRICKS_TOKEN: ${{ secrets.dbToken }}　　　 #先ほど登録したGitHub Secretsを呼び出す
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checks out the repo
+        uses: actions/checkout@v2
+      
+# run_tests.py をDBFS上にアップロード。databricksが提供している upload-dbfs-tempを活用
+      - name: Upload main file
+        uses: databricks/upload-dbfs-temp@v0
+        id: upload_file
+        with:
+          local-path: test-harness/databricks_test_harness/run_tests.py
+          dbfs-temp-dir: 'dbfs:/Users/iori.karasawa@ninsight.onmicrosoft.com/'
+
+# Wheelによるパッケージ化
+      - name: Setup python
+        uses: actions/setup-python@v2
+      - name: Install wheel
+        run: pip install wheel
+      - name: Build wheel
+        working-directory: ./example
+        run:
+          python setup.py bdist_wheel
+          
+# Wheel fileのアップロード
+      - name: Upload Wheel
+        uses: databricks/upload-dbfs-temp@v0
+        id: upload_wheel
+        with:
+          local-path: example/dist/databricks_tests_example-0.0.1-py3-none-any.whl
+          dbfs-temp-dir: 'dbfs:/Users/iori.karasawa@ninsight.onmicrosoft.com/'
+
+# databricks run submit実行のため、databricks-cli のインストール
+      - name: install databricks cli
+        run: pip install databricks-cli
+       
+# run submit(Job API)の実行
+      - name: Trigger run submit
+        working-directory: ./example
+        run:
+          databricks runs submit --json-file run_submit.json
